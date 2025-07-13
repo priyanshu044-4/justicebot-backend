@@ -1,17 +1,22 @@
-print("Script started!")
+print("🚀 JusticeBot FastAPI server started!")
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import requests
-import json
+import openai
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
 # CORS Setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict this to specific domains
+    allow_origins=["*"],  # You can restrict this to your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,26 +43,16 @@ async def ask(request: Request):
         "Avoid Hinglish or mixed-language replies. Keep it clear, formal, and legally accurate."
     )
 
-    # Payload for LLaMA3 via Ollama
-    payload = {
-        "model": "llama3",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question}
-        ]
-    }
-
     try:
-        res = requests.post("http://localhost:11434/api/chat", json=payload, stream=True)
-        full_response = ""
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # Change to "gpt-4" if needed
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ]
+        )
 
-        for line in res.iter_lines():
-            if line:
-                try:
-                    json_data = json.loads(line.decode("utf-8"))
-                    full_response += json_data.get("message", {}).get("content", "")
-                except json.JSONDecodeError:
-                    continue  # skip malformed chunks
+        full_response = response.choices[0].message["content"]
 
         return JSONResponse(
             content={"answer": full_response.strip()},
@@ -65,7 +60,7 @@ async def ask(request: Request):
         )
 
     except Exception as e:
-        print("🔥 Ollama ERROR:", e)
+        print("🔥 OpenAI ERROR:", e)
         return JSONResponse(
             content={"answer": f"❌ Error: {str(e)}"},
             media_type="application/json"
