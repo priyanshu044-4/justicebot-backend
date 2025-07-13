@@ -1,27 +1,26 @@
-print("🚀 JusticeBot FastAPI server started!")
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import openai
-import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import requests
+import json
 
 app = FastAPI()
 
-# CORS Setup
+# ✅ Root route for API status
+@app.get("/")
+async def root():
+    return {"message": "✅ JusticeBot API is live."}
+
+# ✅ CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict this to your frontend URL
+    allow_origins=["*"],  # For production, replace * with your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ✅ /ask endpoint
 @app.post("/ask")
 async def ask(request: Request):
     data = await request.json()
@@ -43,16 +42,25 @@ async def ask(request: Request):
         "Avoid Hinglish or mixed-language replies. Keep it clear, formal, and legally accurate."
     )
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Change to "gpt-4" if needed
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question}
-            ]
-        )
+    payload = {
+        "model": "llama3",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question}
+        ]
+    }
 
-        full_response = response.choices[0].message["content"]
+    try:
+        res = requests.post("http://localhost:11434/api/chat", json=payload, stream=True)
+        full_response = ""
+
+        for line in res.iter_lines():
+            if line:
+                try:
+                    json_data = json.loads(line.decode("utf-8"))
+                    full_response += json_data.get("message", {}).get("content", "")
+                except json.JSONDecodeError:
+                    continue  # skip malformed chunks
 
         return JSONResponse(
             content={"answer": full_response.strip()},
@@ -60,7 +68,7 @@ async def ask(request: Request):
         )
 
     except Exception as e:
-        print("🔥 OpenAI ERROR:", e)
+        print("🔥 Ollama ERROR:", e)
         return JSONResponse(
             content={"answer": f"❌ Error: {str(e)}"},
             media_type="application/json"
